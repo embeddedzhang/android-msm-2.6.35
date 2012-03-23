@@ -49,8 +49,6 @@ obj-$(CONFIG_INPUT_PMIC8058_VIBRA_MEMLESS) += pmic8058-vib-memless.o
 obj-$(CONFIG_BOSCH_BMA150)              += bma150.o
 obj-$(CONFIG_INPUT_KP_FLIP_SWITCH)	+= kp_flip_switch.o
 
-obj-$(CONFIG_INPUT_BMA150)		+= bma150.o
-obj-$(CONFIG_INPUT_BMA150_NG)		+= bma150_ng.o
 obj-$(CONFIG_INPUT_GP2A)                += gp2ap002a00f.o
 obj-$(CONFIG_INPUT_AK8975)		+= ak8975.o
 obj-$(CONFIG_INPUT_APDS9702)		+= apds9702.o
