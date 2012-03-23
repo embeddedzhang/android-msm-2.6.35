@@ -315,13 +315,13 @@ config SENSORS_TSL2550
 	  This driver can also be built as a module.  If so, the module
 	  will be called tsl2550.
 
-config SENSORS_AK8975
-	tristate "AK8975 compass support"
-	default n
+# AK8975 -> AKM8975 config edit done by adridu59 (as it was in 2.6.32.9)
+# Possible mismatch between CONFIG_SENSORS_AKM8975 and CONFIG_INPUT_AK8975
+config SENSORS_AKM8975
+	tristate "AKM8975 Compass Driver"
 	depends on I2C
 	help
-	  If you say yes here you get support for Asahi Kasei's
-	  orientation sensor AK8975.
+	 AKM8975 Compass Driver implemented by HTC. Revised by Motorola.
 
 config SENSORS_AKM8973
 	tristate "AKM8973 Compass Driver"
