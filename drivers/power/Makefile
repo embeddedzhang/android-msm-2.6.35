@@ -24,6 +24,7 @@ obj-$(CONFIG_TEST_POWER)	+= test_power.o
 
 obj-$(CONFIG_BATTERY_DS2760)	+= ds2760_battery.o
 obj-$(CONFIG_BATTERY_DS2782)	+= ds2782_battery.o
+obj-$(CONFIG_BATTERY_DS2784)	+= ds2784_battery.o
 obj-$(CONFIG_BATTERY_PMU)	+= pmu_battery.o
 obj-$(CONFIG_BATTERY_OLPC)	+= olpc_battery.o
 obj-$(CONFIG_BATTERY_TOSA)	+= tosa_battery.o
@@ -34,6 +35,7 @@ obj-$(CONFIG_BATTERY_DA9030)	+= da9030_battery.o
 obj-$(CONFIG_BATTERY_MAX17040)	+= max17040_battery.o
 obj-$(CONFIG_BATTERY_Z2)	+= z2_battery.o
 obj-$(CONFIG_CHARGER_PCF50633)	+= pcf50633-charger.o
+obj-$(CONFIG_CHARGER_BQ24185)	+= bq24185_charger.o
 obj-$(CONFIG_BATTERY_MSM)	+= msm_battery.o
 obj-$(CONFIG_BATTERY_MSM8X60)	+= msm_charger.o
 obj-$(CONFIG_PM8058_CHARGER)	+= pmic8058-charger.o
@@ -43,3 +45,6 @@ obj-$(CONFIG_BATTERY_QCIBAT)	+= qci_battery.o
 obj-$(CONFIG_BATTERY_BQ27520)	+= bq27520_fuelgauger.o
 obj-$(CONFIG_BATTERY_BQ27541)	+= bq27541_fuelgauger.o
 obj-$(CONFIG_SMB137B_CHARGER)   += smb137b.o
+obj-$(CONFIG_BATTERY_ZEUS)      += max17040.o
+obj-$(CONFIG_BATTERY_CHARGALG)  += battery_chargalg.o
+
