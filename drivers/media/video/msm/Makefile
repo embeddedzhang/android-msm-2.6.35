@@ -17,6 +17,8 @@ obj-$(CONFIG_ARCH_MSM8X60) += msm_vfe31.o msm_io_8x60.o msm_vpe1.o
 obj-$(CONFIG_MT9T013) += mt9t013.o mt9t013_reg.o
 obj-$(CONFIG_SN12M0PZ) += sn12m0pz.o sn12m0pz_reg.o
 obj-$(CONFIG_MT9P012) += mt9p012_reg.o
+obj-$(CONFIG_SEIX006) += seix006.o seix006_cam_devdrv_table.o
+obj-$(CONFIG_MT9V114) += mt9v114.o mt9v114_reg.o
 obj-$(CONFIG_MSM_CAMERA_AF_FOXCONN) += mt9p012_fox.o
 obj-$(CONFIG_MSM_CAMERA_AF_BAM) += mt9p012_bam.o
 obj-$(CONFIG_MT9P012_KM) += mt9p012_km.o mt9p012_km_reg.o
@@ -33,6 +35,8 @@ obj-$(CONFIG_VB6801) += vb6801.o
 obj-$(CONFIG_IMX074) += imx074.o imx074_reg.o
 obj-$(CONFIG_WEBCAM_OV9726) += ov9726.o ov9726_reg.o
 obj-$(CONFIG_WEBCAM_OV7692) += ov7692.o
+obj-$(CONFIG_SEMC_CAMERA_MODULE) += semc_camera_module.o
+obj-$(CONFIG_SEMC_SUB_CAMERA_MODULE) += semc_sub_camera_module.o
 obj-$(CONFIG_MT9D112) += mt9d112.o mt9d112_reg.o
 
 obj-$(CONFIG_MT9D113) += mt9d113.o mt9d113_reg.o
