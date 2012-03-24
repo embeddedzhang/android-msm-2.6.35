@@ -87,7 +87,7 @@
 #include <linux/gp2ap002a00f.h>
 #include <linux/i2c/synaptics_touchpad.h>
 #include <linux/bma150_ng.h>
-#include <linux/i2c/akm8975.h>
+#include <linux/akm8975.h>
 #include <mach/mddi_novatek_fwvga.h>
 #include <linux/max17040.h>
 
