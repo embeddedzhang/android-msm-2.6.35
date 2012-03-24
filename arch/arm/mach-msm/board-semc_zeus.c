@@ -70,7 +70,7 @@
 #include "devices.h"
 #include "timer.h"
 #include <mach/socinfo.h>
-#include "cpufreq.h"
+#include <linux/cpufreq.h>
 #include <linux/usb/android_composite.h>
 #ifdef CONFIG_USB_ANDROID_ACCESSORY
 #include <linux/usb/f_accessory.h>

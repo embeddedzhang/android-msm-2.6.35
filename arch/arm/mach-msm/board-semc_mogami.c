@@ -70,7 +70,7 @@
 #include "devices.h"
 #include "timer.h"
 #include <mach/socinfo.h>
-#include "cpufreq.h"
+#include <linux/cpufreq.h>
 #include "board-semc_mogami-keypad.h"
 #include "board-semc_mogami-gpio.h"
 #include <linux/usb/android_composite.h>
