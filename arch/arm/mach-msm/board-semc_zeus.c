@@ -69,7 +69,7 @@
 #include <mach/vreg.h>
 #include "devices.h"
 #include "timer.h"
-#include "socinfo.h"
+#include <mach/socinfo.h>
 #include "cpufreq.h"
 #include <linux/usb/android_composite.h>
 #ifdef CONFIG_USB_ANDROID_ACCESSORY
