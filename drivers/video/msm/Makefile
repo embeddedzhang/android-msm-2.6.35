@@ -140,8 +140,6 @@ obj-$(CONFIG_FB_MSM_HDMI_COMMON) += hdmi_common.o
 obj-$(CONFIG_FB_MSM_HDMI_SII9024A_PANEL) += hdmi_sii9024a.o
 
 obj-$(CONFIG_FB_MSM_TVOUT) += tvout_msm.o
-obj-$(CONFIG_FB_MSM_TVOUT_NTSC) += tvout_msm.o
-obj-$(CONFIG_FB_MSM_TVOUT_PAL) += tvout_msm.o
 
 obj-$(CONFIG_FB_MSM_EXTMDDI_SVGA) += mddi_ext_lcd.o
 
