@@ -43,6 +43,11 @@ config SEIX006
 	default y
 	---help---
 	This is a camera driver for the sexi006 sensor
+config OVM7692
+	bool "Sensor ovm7692"
+	depends on MSM_CAMERA
+	---help---
+	Omnivision VGA fixed focus sensor
 config MT9V114
 	bool "Sensor mt9v114"
 	depends on MSM_CAMERA
