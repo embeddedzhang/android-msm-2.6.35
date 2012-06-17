@@ -70,13 +70,11 @@
 #include "devices.h"
 #include "timer.h"
 #include <mach/socinfo.h>
-#include <linux/cpufreq.h>
+#include "cpufreq.h"
 #include <linux/usb/android_composite.h>
-#ifdef CONFIG_USB_ANDROID_ACCESSORY
-#include <linux/usb/f_accessory.h>
-#endif
 #include "pm.h"
 #include "spm.h"
+#include "keypad-pmic-zeus.h"
 #include <linux/msm_kgsl.h>
 #include <mach/dal_axi.h>
 #include <mach/msm_serial_hs.h>
@@ -87,7 +85,7 @@
 #include <linux/gp2ap002a00f.h>
 #include <linux/i2c/synaptics_touchpad.h>
 #include <linux/bma150_ng.h>
-#include <linux/akm8975.h>
+#include <linux/i2c/akm8975.h>
 #include <mach/mddi_novatek_fwvga.h>
 #include <linux/max17040.h>
 
@@ -111,10 +109,8 @@
 #define AKM8975_GPIO				92
 #define NOVATEK_GPIO_RESET			157
 
-#define MSM_PMEM_SF_SIZE	0x500000
+#define MSM_PMEM_SF_SIZE	0x1700000
 #define MSM_FB_SIZE		0x500000
-#define MSM_GPU_PHYS_SIZE       SZ_2M
-#define MSM_PMEM_CAMERA_SIZE    0x2000000
 #define MSM_PMEM_ADSP_SIZE      0x1800000
 #define PMEM_KERNEL_EBI1_SIZE   0x600000
 #define MSM_PMEM_AUDIO_SIZE     0x200000
@@ -140,8 +136,6 @@
 #define MSM_RAM_CONSOLE_START   (0x50000000 - MSM_RAM_CONSOLE_SIZE)
 #define MSM_RAM_CONSOLE_SIZE    (128 * SZ_1K)
 #endif
-
-#define USB_VREG_MV		3500	/* usb voltage regulator mV */
 
 /* GPIO hardware device identification */
 enum board_hwid {
@@ -273,6 +267,42 @@ static struct pmic8058_keypad_data zeus_keypad_data = {
 	.keymap_data = &keymap_game_data,
 };
 
+static struct keypad_pmic_zeus_key keymap_pmic[] = {
+	{
+		.code	= KEY_BACK,
+		.irq	= PM8058_GPIO_IRQ(PMIC8058_IRQ_BASE, 17 - 1),
+		.gpio	= 17,
+	},
+	{
+		.code	= KEY_MENU,
+		.irq	= PM8058_GPIO_IRQ(PMIC8058_IRQ_BASE, 18 - 1),
+		.gpio	= 18,
+	},
+	{
+		.code	= KEY_HOME,
+		.irq	= PM8058_GPIO_IRQ(PMIC8058_IRQ_BASE, 19 - 1),
+		.gpio	= 19,
+		.wake   = 1,
+	},
+	{
+		.code	= KEY_SEARCH,
+		.irq	= PM8058_GPIO_IRQ(PMIC8058_IRQ_BASE, 26 - 1),
+		.gpio	= 26,
+	},
+	{
+		.code	= KEY_VENDOR,
+		.irq	= PM8058_GPIO_IRQ(PMIC8058_IRQ_BASE, 31 - 1),
+		.gpio	= 31,
+		.wake	= 1,
+	},
+};
+
+static struct keypad_pmic_zeus_platform_data keypad_pmic_platform_data = {
+	.keymap = keymap_pmic,
+	.keymap_size = ARRAY_SIZE(keymap_pmic),
+};
+
+
 /* Put sub devices with fixed location first in sub_devices array */
 #define	PM8058_SUBDEV_KPD	0
 #define	PM8058_SUBDEV_LED	1
@@ -313,6 +343,10 @@ static struct mfd_cell pm8058_subdevs[] = {
 	{	.name = "pm8058-upl",
 		.id		= -1,
 	},
+	{	.name = "keypad-pmic-zeus",
+		.platform_data = &keypad_pmic_platform_data,
+		.data_size = sizeof(keypad_pmic_platform_data),
+	},
 };
 
 static struct pm8058_platform_data pm8058_7x30_data = {
@@ -320,11 +354,12 @@ static struct pm8058_platform_data pm8058_7x30_data = {
 
 	.num_subdevs = ARRAY_SIZE(pm8058_subdevs),
 	.sub_devices = pm8058_subdevs,
+	.irq_trigger_flags = IRQF_TRIGGER_LOW,
 };
 
 static struct i2c_board_info pm8058_boardinfo[] __initdata = {
 	{
-	 I2C_BOARD_INFO("pm8058-core", 0),
+	 I2C_BOARD_INFO("pm8058-core", 0x55),
 	 .irq = MSM_GPIO_TO_INT(PMIC_GPIO_INT),
 	 .platform_data = &pm8058_7x30_data,
 	 },
@@ -332,9 +367,9 @@ static struct i2c_board_info pm8058_boardinfo[] __initdata = {
 
 static void msm_camera_vreg_enable(void)
 {
-	vreg_helper_on("gp15", 1200); /* L22 */
-	vreg_helper_on("lvsw1", 1800); /* LVS1 */
-	vreg_helper_on("gp2", 2800); /* L11 */
+	vreg_helper_on("gp15", 1200); // L22
+	vreg_helper_on("lvsw1", 1800); // LVS1
+	vreg_helper_on("gp2", 2800); // L11
 }
 
 static void msm_camera_vreg_disable(void)
@@ -403,23 +438,23 @@ static void config_gpio_table(uint32_t *table, int len)
 	}
 }
 
-static void config_camera_on_gpios(void)
+static int config_camera_on_gpios(void)
 {
-    gpio_request(31, "vtcam_rst");
-    gpio_set_value(31, 1); // SCAM_RST_N
-    gpio_free(31);
+	gpio_request(31, "vtcam_rst");
+	gpio_set_value(31, 1); // SCAM_RST_N
+	gpio_free(31);
 	config_gpio_table(camera_on_gpio_table,
 				ARRAY_SIZE(camera_on_gpio_table));
 	msm_camera_vreg_enable();
+	return 0;
 }
 
 static void config_camera_off_gpios(void)
 {
-    gpio_request(31, "vtcam_rst");
-    gpio_set_value(31, 1); // SCAM_RST_N
-    gpio_free(31);
+	gpio_request(31, "vtcam_rst");
+	gpio_set_value(31, 1); // SCAM_RST_N
+	gpio_free(31);
 	msm_camera_vreg_disable();
-
 	config_gpio_table(camera_off_gpio_table,
 				ARRAY_SIZE(camera_off_gpio_table));
 }
@@ -494,23 +529,6 @@ struct msm_camera_device_platform_data msm_camera_device_data_ovm7692 = {
 	.ioclk.vfe_clk_rate  = 122880000,
 };
 
-struct msm_camera_device_platform_data msm_camera_device_data_mt9v114 = {
-	.camera_gpio_on = config_camera_on_gpios,
-	.camera_gpio_off = config_camera_off_gpios,
-	.ioext.mdcphy = MSM_MDC_PHYS,
-	.ioext.mdcsz  = MSM_MDC_SIZE,
-	.ioext.appphy = MSM_CLK_CTL_PHYS,
-	.ioext.appsz  = MSM_CLK_CTL_SIZE,
-	.ioext.camifpadphy = 0xAB000000,
-	.ioext.camifpadsz = 0x00000400,
-	.ioext.csiphy = 0xA6100000,
-	.ioext.csisz  = 0x00000400,
-	.ioext.csiirq = INT_CSI,
-	.ioclk.mclk_clk_rate = 19200000,
-	.ioclk.vfe_clk_rate  = 122880000,
-};
-
-
 
 #ifdef CONFIG_SEIX006
 static struct msm_camera_sensor_flash_data flash_seix006 = {
@@ -562,31 +580,6 @@ static struct platform_device msm_camera_sensor_ovm7692 = {
 };
 #endif /*CONFIG_OVM7692 ZEUS VGA VT CAMERA*/
 
-#ifdef CONFIG_MT9V114
-
-static struct msm_camera_sensor_flash_data flash_mt9v114_data = {
-	.flash_type = MSM_CAMERA_FLASH_NONE,
-	.flash_src  = 0
-};
-
-static struct msm_camera_sensor_info msm_camera_sensor_mt9v114_data = {
-	.sensor_name    = "mt9v114",
-	.sensor_reset   = 0,
-	.sensor_pwd     = 31,
-	.vcm_pwd        = 0,
-	.pdata          = &msm_camera_device_data_mt9v114,
-	.flash_data     = &flash_mt9v114_data,
-	.resource       = msm_camera_resources,
-	.num_resources  = ARRAY_SIZE(msm_camera_resources)
-};
-
-static struct platform_device msm_camera_sensor_mt9v114 = {
-	.name      = "msm_camera_mt9v114",
-	.dev       = {
-		.platform_data = &msm_camera_sensor_mt9v114_data,
-	},
-};
-#endif /*CONFIG_MT9V114 ZEUS VGA VT CAMERA*/
 
 static struct resource msm_gemini_resources[] = {
 	{
@@ -827,6 +820,7 @@ static struct marimba_codec_platform_data mariba_codec_pdata = {
 };
 
 static struct marimba_platform_data marimba_pdata = {
+	.slave_id[MARIMBA_SLAVE_ID_FM] = MARIMBA_SLAVE_ID_FM_ADDR,
 	.slave_id[MARIMBA_SLAVE_ID_CDC] = MARIMBA_SLAVE_ID_CDC_ADDR,
 	.slave_id[MARIMBA_SLAVE_ID_QMEMBIST] = MARIMBA_SLAVE_ID_QMEMBIST_ADDR,
 	.marimba_setup = msm_marimba_setup_power,
@@ -1176,16 +1170,8 @@ static char *usb_functions_diag[] = {
 	"diag",
 };
 
-#ifdef CONFIG_USB_ANDROID_ACCESSORY
-static char *usb_functions_accessory[] = { "accessory" };
-static char *usb_functions_accessory_adb[] = { "accessory", "adb" };
-#endif
-
 static char *usb_functions_all[] = {
 	"rndis",
-#ifdef CONFIG_USB_ANDROID_ACCESSORY
-	"accessory",
-#endif
 	"usb_mass_storage",
 #if defined(CONFIG_USB_ANDROID_MTP_ARICENT)
 	"mtp",
@@ -1251,20 +1237,6 @@ static struct android_usb_product usb_products[] = {
 		.num_functions	= ARRAY_SIZE(usb_functions_msc_adb_eng),
 		.functions	= usb_functions_msc_adb_eng,
 	},
-#ifdef CONFIG_USB_ANDROID_ACCESSORY
-	{
-		.vendor_id      = USB_ACCESSORY_VENDOR_ID,
-		.product_id     = USB_ACCESSORY_PRODUCT_ID,
-		.num_functions  = ARRAY_SIZE(usb_functions_accessory),
-		.functions      = usb_functions_accessory,
-	},
-	{
-		.vendor_id      = USB_ACCESSORY_VENDOR_ID,
-		.product_id     = USB_ACCESSORY_ADB_PRODUCT_ID,
-		.num_functions  = ARRAY_SIZE(usb_functions_accessory_adb),
-		.functions      = usb_functions_accessory_adb,
-	},
-#endif
 };
 
 static struct usb_mass_storage_platform_data mass_storage_pdata = {
@@ -1446,29 +1418,11 @@ struct novatek_i2c_pdata novatek_i2c_pdata = {
 	.panels = novatek_panels,
 };
 
-static struct as3676_als_config as3676_als_config = {
-	.gain = AS3676_GAIN_1,
-	.filter_up = AS3676_FILTER_1HZ,
-	.filter_down = AS3676_FILTER_1HZ,
-	.source = AS3676_ALS_SOURCE_GPIO2,
-	.curve = {
-		[AS3676_AMB_GROUP_1] = {
-			.y0 = 49,
-			.y3 = 255,
-			.k1 = 71,
-			.k2 = 54,
-			.x1 =  1,
-			.x2 = 33,
-		},
-	},
-};
-
 static struct as3676_platform_led as3676_pdata_leds[] = {
 	{
 		.name = "lcd-backlight",
 		.sinks = BIT(AS3676_SINK_01),
 		.flags = AS3676_FLAG_ALS | AS3676_FLAG_PWM_INIT
-		| AS3676_FLAG_WAIT_RESUME
 			| AS3676_FLAG_DLS,
 		.max_current = 20000,
 		.default_brightness = LED_FULL,
@@ -1477,26 +1431,25 @@ static struct as3676_platform_led as3676_pdata_leds[] = {
 		.name = "red",
 		.sinks = BIT(AS3676_SINK_41),
 		.flags = AS3676_FLAG_RGB | AS3676_FLAG_BLINK,
-		.max_current = 3000,
+		.max_current = 4000,
 	},
 	{
 		.name = "green",
 		.sinks = BIT(AS3676_SINK_42),
 		.flags = AS3676_FLAG_RGB | AS3676_FLAG_BLINK,
-		.max_current = 3000,
+		.max_current = 4000,
 	},
 	{
 		.name = "blue",
 		.sinks = BIT(AS3676_SINK_43),
 		.flags = AS3676_FLAG_RGB | AS3676_FLAG_BLINK,
-		.max_current = 3000,
+		.max_current = 4000,
 	},
 };
 
 static struct as3676_platform_data as3676_platform_data = {
 	.leds = as3676_pdata_leds,
 	.num_leds = ARRAY_SIZE(as3676_pdata_leds),
-	.als_config = &as3676_als_config,
 	.als_connected = 1,
 	.dls_connected = 1,
 };
@@ -1584,13 +1537,6 @@ static struct gp2a_platform_data gp2a_platform_data = {
 	.gpio_shutdown = gp2a_gpio_teardown,
 };
 
-static struct cypress_callback *cy_callback;
-
-static void cy_register_cb(struct cypress_callback *cy)
-{
-	cy_callback = cy;
-}
-
 static struct cypress_touch_platform_data cypress_touch_data = {
 	.x_min		= 0,
 	.x_max		= 479,
@@ -1602,14 +1548,7 @@ static struct cypress_touch_platform_data cypress_touch_data = {
 	.reset_polarity	= 1,
 	.irq_polarity	= IRQF_TRIGGER_FALLING,
 	.no_fw_update = 0,
-	.register_cb	= cy_register_cb,
 };
-
-void charger_connected(int on)
-{
-	if (cy_callback && cy_callback->cb)
-		cy_callback->cb(cy_callback, on);
-}
 
 static void cypress_touch_gpio_init(void)
 {
@@ -1646,23 +1585,17 @@ static struct i2c_board_info msm_camera_boardinfo[] __initdata = {
 		.platform_data	= &gp2a_platform_data
 	},
 #ifdef CONFIG_SEIX006 /* zeus camera */
-	{
-		I2C_BOARD_INFO("seix006", 0x1A),
-		.type = "seix006"
-	},
-#endif /* CONFIG_SEIX006 */
+    {
+        I2C_BOARD_INFO("seix006", 0x1A),
+        .type = "seix006"
+    },
+#endif // CONFIG_SEIX006
 #ifdef CONFIG_OVM7692 /* zeus vt camera */
-	{
-		I2C_BOARD_INFO("ovm7692", 0x3C),
-		.type = "ovm7692"
+        {
+        I2C_BOARD_INFO("ovm7692", 0x3C),
+        .type = "ovm7692"
 	},
-#endif /* CONFIG_OVM7692 */
-#ifdef CONFIG_MT9V114 /* zeus vt camera version 2*/
-	{
-		I2C_BOARD_INFO("mt9v114", 0x3D),
-		.type = "mt9v114"
-	},
-#endif /* CONFIG_MT9V114 */
+#endif // CONFIG_OVM7692
 };
 
 /* Driver(s) to be notified upon change in bdata */
@@ -1710,12 +1643,10 @@ static struct max17040_platform_data max17040_platform_data = {
 	},
 	.rcomp_data = {
 		.rcomp0 = 0x55,
-		.temp_co_hot = -1400,
-		.temp_co_cold = -9725,
+		.temp_co_hot = 1400,
+		.temp_co_cold = 9725,
 		.temp_div = 1000,
-	},
-	.chg_max_temp = 550,
-	.chg_min_temp = 50,
+	}
 };
 
 static struct i2c_board_info msm_i2c_board_info[] = {
@@ -1920,7 +1851,7 @@ static int msm_hsusb_ldo_init(int init)
 		vreg_3p3 = vreg_get(NULL, "usb");
 		if (IS_ERR(vreg_3p3))
 			return PTR_ERR(vreg_3p3);
-		vreg_set_level(vreg_3p3, USB_VREG_MV);
+		vreg_set_level(vreg_3p3, 3500);
 	} else
 		vreg_put(vreg_3p3);
 
@@ -1947,15 +1878,13 @@ static int msm_hsusb_ldo_enable(int enable)
 
 static int msm_hsusb_ldo_set_voltage(int mV)
 {
-	static int cur_voltage = USB_VREG_MV;
+	static int cur_voltage = 3500;
 
 	if (!vreg_3p3 || IS_ERR(vreg_3p3))
 		return -ENODEV;
 
 	if (cur_voltage == mV)
 		return 0;
-
-	charger_connected(USB_VREG_MV == mV);
 
 	cur_voltage = mV;
 
@@ -2065,12 +1994,6 @@ static struct android_pmem_platform_data android_pmem_adsp_pdata = {
 	.cached = 0,
 };
 
-static struct android_pmem_platform_data android_pmem_camera_pdata = {
-	.name = "pmem_camera",
-	.allocator_type = PMEM_ALLOCATORTYPE_BITMAP,
-	.cached = 0,
-};
-
 static struct android_pmem_platform_data android_pmem_audio_pdata = {
 	.name = "pmem_audio",
 	.allocator_type = PMEM_ALLOCATORTYPE_BITMAP,
@@ -2087,12 +2010,6 @@ static struct platform_device android_pmem_adsp_device = {
 	.name = "android_pmem",
 	.id = 2,
 	.dev = {.platform_data = &android_pmem_adsp_pdata},
-};
-
-static struct platform_device android_pmem_camera_device = {
-	.name = "android_pmem",
-	.id = 3,
-	.dev = {.platform_data = &android_pmem_camera_pdata},
 };
 
 static struct platform_device android_pmem_audio_device = {
@@ -2115,12 +2032,13 @@ static int kgsl_cpufreq_vote(struct msm_cpufreq_voter *v)
 }
 
 static struct kgsl_cpufreq_voter kgsl_cpufreq_voter = {
-	.idle = 1,
+	.idle = 0,
 	.voter = {
 		.vote = kgsl_cpufreq_vote,
 	},
 };
 
+#if 0
 static void kgsl_idle_cb(int idle)
 {
 	if (idle != kgsl_cpufreq_voter.idle) {
@@ -2128,6 +2046,7 @@ static void kgsl_idle_cb(int idle)
 		msm_cpufreq_voter_update(&kgsl_cpufreq_voter.voter);
 	}
 }
+#endif
 
 static struct kgsl_platform_data kgsl_pdata = {
 	/* AXI rates in KHz */
@@ -2142,8 +2061,22 @@ static struct kgsl_platform_data kgsl_pdata = {
 	.set_grp3d_async = set_grp3d_async,
 	.imem_clk_name = "imem_clk",
 	.grp3d_clk_name = "grp_clk",
+	.grp3d_pclk_name = "grp_pclk",
 	.grp2d0_clk_name = "grp_2d_clk",
-	.idle_callback = kgsl_idle_cb,
+	.grp2d0_pclk_name = "grp_2d_pclk",
+	.idle_timeout_3d = HZ/20,
+	.idle_timeout_2d = HZ/10,
+//	.idle_callback = kgsl_idle_cb,
+
+#ifdef CONFIG_KGSL_PER_PROCESS_PAGE_TABLE
+	.pt_va_size = SZ_32M,
+	/* Maximum of 32 concurrent processes */
+	.pt_max_count = 32,
+#else
+	.pt_va_size = SZ_128M,
+	/* We only ever have one pagetable for everybody */
+	.pt_max_count = 1,
+#endif
 };
 
 static struct resource kgsl_resources[] = {
@@ -2151,12 +2084,6 @@ static struct resource kgsl_resources[] = {
 	 .name = "kgsl_reg_memory",
 	 .start = 0xA3500000,	/* 3D GRP address */
 	 .end = 0xA351ffff,
-	 .flags = IORESOURCE_MEM,
-	 },
-	{
-	 .name = "kgsl_phys_memory",
-	 .start = 0,
-	 .end = 0,
 	 .flags = IORESOURCE_MEM,
 	 },
 	{
@@ -2200,10 +2127,18 @@ static struct mddi_platform_data mddi_pdata = {
 	.mddi_sel_clk = msm_fb_mddi_sel_clk,
 };
 
+int mdp_core_clk_rate_table[] = {
+	122880000,
+	122880000,
+	122880000,
+	192000000,
+};
+
 static struct msm_panel_common_pdata mdp_pdata = {
 	.hw_revision_addr = 0xac001270,
 	.gpio = 30,
-	.mdp_core_clk_rate = 122880000,
+	.mdp_core_clk_table = mdp_core_clk_rate_table,
+	.num_mdp_clk = ARRAY_SIZE(mdp_core_clk_rate_table),
 };
 
 static void __init msm_fb_add_devices(void)
@@ -2467,16 +2402,13 @@ static struct platform_device semc_rpc_handset_device = {
 #ifdef CONFIG_SIMPLE_REMOTE_PLATFORM
 #define PLUG_DET_ENA_PIN 80
 #define PLUG_DET_READ_PIN 26
-#define MODE_SWITCH_PIN -1
 
 int simple_remote_pf_initialize_gpio(struct simple_remote_platform_data *data)
 {
 	int err = 0;
-	int i;
 
 	if (!data || -1 == data->headset_detect_enable_pin) {
-		printk(KERN_ERR
-		       "*** %s - Error: Invalid inparameter (GPIO Pins)."
+		printk(KERN_ERR "*** %s - Error: Invalid inparameter (GPIO Pins)."
 		       " Aborting!\n", __func__);
 		return -EIO;
 	}
@@ -2517,44 +2449,7 @@ int simple_remote_pf_initialize_gpio(struct simple_remote_platform_data *data)
 	else
 		data->invert_plug_det = 0;
 
-	if (0 < data->headset_mode_switch_pin) {
-		printk(KERN_INFO "%s - This device supports HS Mode switch\n",
-		       __func__);
-		err = gpio_request(data->headset_mode_switch_pin,
-				   "Simple_remote_headset_mode_switch");
-		if (err) {
-			printk(KERN_CRIT
-			       "%s - Error %d - Request hs-mode_switch pin",
-			       __func__, err);
-			goto out_hs_det_read;
-		}
-
-		err = gpio_direction_output(data->headset_mode_switch_pin, 0);
-		if (err) {
-			printk(KERN_CRIT
-			       "%s - Error %d - Set hs-mode_switch pin as "
-			       "input\n", __func__, err);
-			goto out_hs_mode_switch;
-		}
-	}
-
-	for (i = 0; i < data->num_regs; i++) {
-		data->regs[i].reg = vreg_get(NULL, data->regs[i].name);
-		if (IS_ERR(data->regs[i].reg)) {
-			printk(KERN_ERR "%s - Failed to find regulator %s\n",
-			       __func__, data->regs[i].name);
-			err = PTR_ERR(data->regs[i].reg);
-			if (0 <= data->headset_mode_switch_pin)
-				goto out_hs_mode_switch;
-			else
-				goto out_hs_det_read;
-		}
-	}
-
 	return err;
-
-out_hs_mode_switch:
-	gpio_free(data->headset_mode_switch_pin);
 
 out_hs_det_read:
 	gpio_free(data->headset_detect_read_pin);
@@ -2572,27 +2467,11 @@ void simple_remote_pf_deinitialize_gpio(
 	gpio_free(data->headset_detect_enable_pin);
 }
 
-static struct simple_remote_platform_regulators regs[] =  {
-	{
-		.name = "ncp",
-	},
-	{
-		.name = "s3",
-	},
-	{
-		.name = "s2",
-	},
-};
-
 static struct simple_remote_platform_data simple_remote_pf_data = {
 	.headset_detect_enable_pin = PLUG_DET_ENA_PIN,
 	.headset_detect_read_pin = PLUG_DET_READ_PIN,
-	.headset_mode_switch_pin = MODE_SWITCH_PIN,
 	.initialize = &simple_remote_pf_initialize_gpio,
 	.deinitialize = &simple_remote_pf_deinitialize_gpio,
-
-	.regs = regs,
-	.num_regs = ARRAY_SIZE(regs),
 
 	.controller = PM_HSED_CONTROLLER_1,
 };
@@ -2614,6 +2493,7 @@ static struct platform_device *devices[] __initdata = {
 	&mass_storage_device,
 	&rndis_device,
 	&android_usb_device,
+	&usb_diag_device,
 	&bcm_bt_lpm_device,
 	&qsd_device_spi,
 	&msm_device_ssbi6,
@@ -2623,7 +2503,6 @@ static struct platform_device *devices[] __initdata = {
 	&msm_rotator_device,
 	&android_pmem_kernel_ebi1_device,
 	&android_pmem_adsp_device,
-	&android_pmem_camera_device,
 	&android_pmem_audio_device,
 	&msm_device_i2c,
 	&msm_device_i2c_2,
@@ -2645,13 +2524,10 @@ static struct platform_device *devices[] __initdata = {
 	&msm_bt_power_device,
 #ifdef CONFIG_SEIX006
 	&msm_camera_sensor_seix006,
-#endif /* CONFIG_SEIX006 */
+#endif // CONFIG_SEIX006
 #ifdef CONFIG_OVM7692
 	&msm_camera_sensor_ovm7692,
-#endif /* CONFIG_OVM7692 */
-#ifdef CONFIG_MT9V114
-	&msm_camera_sensor_mt9v114,
-#endif /* CONFIG_MT9V114 */
+#endif // CONFIG_OVM7692
 	&zeus_wifi,
 	&novatek_device,
 #ifdef CONFIG_PMIC_TIME
@@ -3504,60 +3380,45 @@ static void __init msm7x30_init(void)
 }
 
 static unsigned pmem_sf_size = MSM_PMEM_SF_SIZE;
-static void __init pmem_sf_size_setup(char **p)
+static int __init pmem_sf_size_setup(char *p)
 {
-	pmem_sf_size = memparse(*p, p);
+	pmem_sf_size = memparse(p, NULL);
+	return 0;
 }
-
-__early_param("pmem_sf_size=", pmem_sf_size_setup);
+early_param("pmem_sf_size", pmem_sf_size_setup);
 
 static unsigned fb_size = MSM_FB_SIZE;
-static void __init fb_size_setup(char **p)
+static int __init fb_size_setup(char *p)
 {
-	fb_size = memparse(*p, p);
+	fb_size = memparse(p, NULL);
+	return 0;
 }
-
-__early_param("fb_size=", fb_size_setup);
-
-static unsigned gpu_phys_size = MSM_GPU_PHYS_SIZE;
-static void __init gpu_phys_size_setup(char **p)
-{
-	gpu_phys_size = memparse(*p, p);
-}
-
-__early_param("gpu_phys_size=", gpu_phys_size_setup);
+early_param("fb_size", fb_size_setup);
 
 static unsigned pmem_adsp_size = MSM_PMEM_ADSP_SIZE;
-static void __init pmem_adsp_size_setup(char **p)
+static int __init pmem_adsp_size_setup(char *p)
 {
-	pmem_adsp_size = memparse(*p, p);
+	pmem_adsp_size = memparse(p, NULL);
+	return 0;
 }
-
-__early_param("pmem_adsp_size=", pmem_adsp_size_setup);
-
-static unsigned pmem_camera_size = MSM_PMEM_CAMERA_SIZE;
-static void __init pmem_camera_size_setup(char **p)
-{
-	pmem_camera_size = memparse(*p, p);
-}
-
-__early_param("pmem_camera_size=", pmem_camera_size_setup);
+early_param("pmem_adsp_size", pmem_adsp_size_setup);
 
 static unsigned pmem_audio_size = MSM_PMEM_AUDIO_SIZE;
-static void __init pmem_audio_size_setup(char **p)
+static int __init pmem_audio_size_setup(char *p)
 {
-	pmem_audio_size = memparse(*p, p);
+	pmem_audio_size = memparse(p, NULL);
+	return 0;
 }
-
-__early_param("pmem_audio_size=", pmem_audio_size_setup);
+early_param("pmem_audio_size", pmem_audio_size_setup);
 
 static unsigned pmem_kernel_ebi1_size = PMEM_KERNEL_EBI1_SIZE;
-static void __init pmem_kernel_ebi1_size_setup(char **p)
+static int __init pmem_kernel_ebi1_size_setup(char *p)
 {
-	pmem_kernel_ebi1_size = memparse(*p, p);
+	pmem_kernel_ebi1_size = memparse(p, NULL);
+	return 0;
 }
 
-__early_param("pmem_kernel_ebi1_size=", pmem_kernel_ebi1_size_setup);
+early_param("pmem_kernel_ebi1_size", pmem_kernel_ebi1_size_setup);
 
 static void __init msm7x30_allocate_memory_regions(void)
 {
@@ -3580,31 +3441,13 @@ static void __init msm7x30_allocate_memory_regions(void)
 	pr_info("allocating %lu bytes at %p (%lx physical) for fb\n",
 		size, addr, __pa(addr));
 
-	size = gpu_phys_size;
-	if (size) {
-		addr = alloc_bootmem(size);
-		kgsl_resources[1].start = __pa(addr);
-		kgsl_resources[1].end = kgsl_resources[1].start + size - 1;
-		pr_info("allocating %lu bytes at %p (%lx physical) for "
-			"KGSL\n", size, addr, __pa(addr));
-	}
-
 	size = pmem_adsp_size;
 
 	if (size) {
-		addr = __alloc_bootmem(size, 8*1024, __pa(MAX_DMA_ADDRESS));
+		addr = alloc_bootmem(size);
 		android_pmem_adsp_pdata.start = __pa(addr);
 		android_pmem_adsp_pdata.size = size;
 		pr_info("allocating %lu bytes at %p (%lx physical) for adsp "
-			"pmem arena\n", size, addr, __pa(addr));
-	}
-
-	size = pmem_camera_size;
-	if (size) {
-		addr = alloc_bootmem(size);
-		android_pmem_camera_pdata.start = __pa(addr);
-		android_pmem_camera_pdata.size = size;
-		pr_info("allocating %lu bytes at %p (%lx physical) for camera "
 			"pmem arena\n", size, addr, __pa(addr));
 	}
 
