@@ -5,6 +5,7 @@
  *  SD support Copyright (C) 2004 Ian Molton, All Rights Reserved.
  *  Copyright (C) 2005-2008 Pierre Ossman, All Rights Reserved.
  *  MMCv4 support Copyright (C) 2006 Philip Langdale, All Rights Reserved.
+ *  Copyright (C) 2011 Sony Ericsson Mobile Communications AB.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -1362,50 +1363,30 @@ int mmc_suspend_host(struct mmc_host *host)
 
 	mmc_bus_get(host);
 	if (host->bus_ops && !host->bus_dead) {
-
-		/*
-		 * A long response time is not acceptable for device drivers
-		 * when doing suspend. Prevent mmc_claim_host in the suspend
-		 * sequence, to potentially wait "forever" by trying to
-		 * pre-claim the host.
-		 *
-		 * Skip try claim host for SDIO cards, doing so fixes deadlock
-		 * conditions. The function driver suspend may again call into
-		 * SDIO driver within a different context for enabling power
-		 * save mode in the card and hence wait in mmc_claim_host
-		 * causing deadlock.
-		 */
-		if (!(host->card && mmc_card_sdio(host->card)))
-			if (!mmc_try_claim_host(host))
-				err = -EBUSY;
-
-		if (!err) {
-			if (host->bus_ops->suspend)
-				err = host->bus_ops->suspend(host);
-			if (!(host->card && mmc_card_sdio(host->card)))
-				mmc_do_release_host(host);
-
-			if (err == -ENOSYS || !host->bus_ops->resume) {
-				/*
-				 * We simply "remove" the card in this case.
-				 * It will be redetected on resume.
-				 */
-				if (host->bus_ops->remove)
-					host->bus_ops->remove(host);
-				mmc_claim_host(host);
-				mmc_detach_bus(host);
-				mmc_power_off(host);
-				mmc_release_host(host);
-				host->pm_flags = 0;
-				err = 0;
-			}
+		if (host->bus_ops->suspend)
+			err = host->bus_ops->suspend(host);
+		if (err == -ENOSYS || !host->bus_ops->resume) {
+			/*
+			 * We simply "remove" the card in this case.
+			 * It will be redetected on resume.
+			 */
+			if (host->bus_ops->remove)
+				host->bus_ops->remove(host);
+			mmc_claim_host(host);
+			mmc_detach_bus(host);
+			mmc_release_host(host);
+			host->pm_flags = 0;
+			err = 0;
 		}
 	}
 	mmc_bus_put(host);
 
 	if (!err && !(host->pm_flags & MMC_PM_KEEP_POWER))
 		mmc_power_off(host);
-
+#ifdef CONFIG_MACH_SDCC_BCM_DRIVER
+	else
+		mmc_pm_keeppwr_control(host, 0);
+#endif
 	return err;
 }
 
@@ -1431,6 +1412,11 @@ int mmc_resume_host(struct mmc_host *host)
 			mmc_power_up(host);
 			mmc_select_voltage(host, host->ocr);
 		}
+#ifdef CONFIG_MACH_SDCC_BCM_DRIVER
+		else
+			mmc_pm_keeppwr_control(host, 1);
+#endif
+
 		BUG_ON(!host->bus_ops->resume);
 		err = host->bus_ops->resume(host);
 		if (err) {

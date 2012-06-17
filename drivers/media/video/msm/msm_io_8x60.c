@@ -1,4 +1,5 @@
 /* Copyright (c) 2010-2011, Code Aurora Forum. All rights reserved.
+ * Copyright (C) 2011 Sony Ericsson Mobile Communications AB.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -78,7 +79,6 @@
 #define	MIPI_PHY_D0_CONTROL_HS_REC_EQ_SHFT				0x1c
 #define	MIPI_PHY_D1_CONTROL_MIPI_CLK_PHY_SHUTDOWNB_SHFT		0x9
 #define	MIPI_PHY_D1_CONTROL_MIPI_DATA_PHY_SHUTDOWNB_SHFT	0x8
-#define	DBG_CSI	0
 
 static struct clk *camio_cam_clk;
 static struct clk *camio_vfe_clk;
@@ -97,10 +97,12 @@ static struct clk *camio_vpe_pclk;
 static struct regulator *fs_vfe;
 static struct regulator *fs_ijpeg;
 static struct regulator *fs_vpe;
+#if !defined(CONFIG_SEMC_CAMERA_MODULE) && \
+	!defined(CONFIG_SEMC_SUB_CAMERA_MODULE)
 static struct regulator *ldo15;
 static struct regulator *lvs0;
 static struct regulator *ldo25;
-
+#endif
 static struct msm_camera_io_ext camio_ext;
 static struct msm_camera_io_clk camio_clk;
 static struct platform_device *camio_dev;
@@ -187,6 +189,8 @@ void msm_io_memcpy(void __iomem *dest_addr, void __iomem *src_addr, u32 len)
 
 static void msm_camera_vreg_enable(void)
 {
+#if !defined(CONFIG_SEMC_CAMERA_MODULE) && \
+	!defined(CONFIG_SEMC_SUB_CAMERA_MODULE)
 	ldo15 = regulator_get(NULL, "8058_l15");
 	if (IS_ERR(ldo15)) {
 		pr_err("%s: VREG LDO15 get failed\n", __func__);
@@ -227,7 +231,7 @@ static void msm_camera_vreg_enable(void)
 		pr_err("%s: VREG LDO25 enable failed\n", __func__);
 		goto ldo25_put;
 	}
-
+#endif
 	fs_vfe = regulator_get(NULL, "fs_vfe");
 	if (IS_ERR(fs_vfe)) {
 		CDBG("%s: Regulator FS_VFE get failed %ld\n", __func__,
@@ -238,7 +242,8 @@ static void msm_camera_vreg_enable(void)
 		regulator_put(fs_vfe);
 	}
 	return;
-
+#if !defined(CONFIG_SEMC_CAMERA_MODULE) && \
+	!defined(CONFIG_SEMC_SUB_CAMERA_MODULE)
 ldo25_disable:
 	regulator_disable(ldo25);
 ldo25_put:
@@ -251,10 +256,13 @@ ldo15_disable:
 	regulator_disable(ldo15);
 ldo15_put:
 	regulator_put(ldo15);
+#endif
 }
 
 static void msm_camera_vreg_disable(void)
 {
+#if !defined(CONFIG_SEMC_CAMERA_MODULE) && \
+	!defined(CONFIG_SEMC_SUB_CAMERA_MODULE)
 	if (ldo15) {
 		regulator_disable(ldo15);
 		regulator_put(ldo15);
@@ -269,7 +277,7 @@ static void msm_camera_vreg_disable(void)
 		regulator_disable(ldo25);
 		regulator_put(ldo25);
 	}
-
+#endif
 	if (fs_vfe) {
 		regulator_disable(fs_vfe);
 		regulator_put(fs_vfe);
@@ -301,7 +309,11 @@ int msm_camio_clk_enable(enum msm_camio_clk_type clktype)
 
 	case CAMIO_CSI1_VFE_CLK:
 		camio_csi1_vfe_clk =
+#ifdef CONFIG_SEMC_SUB_CAMERA_MODULE
+		clk = clk_get(NULL, "csi1_vfe_clk");
+#else
 		clk = clk_get(&camio_dev->dev, "csi_vfe_clk");
+#endif
 		break;
 
 	case CAMIO_CSI_SRC_CLK:
@@ -317,7 +329,11 @@ int msm_camio_clk_enable(enum msm_camio_clk_type clktype)
 
 	case CAMIO_CSI1_CLK:
 		camio_csi1_clk =
+#ifdef CONFIG_SEMC_SUB_CAMERA_MODULE
+		clk = clk_get(NULL, "csi1_clk");
+#else
 		clk = clk_get(&camio_dev->dev, "csi_clk");
+#endif
 		break;
 
 	case CAMIO_VFE_PCLK:
@@ -332,7 +348,11 @@ int msm_camio_clk_enable(enum msm_camio_clk_type clktype)
 
 	case CAMIO_CSI1_PCLK:
 		camio_csi1_pclk =
+#ifdef CONFIG_SEMC_SUB_CAMERA_MODULE
+		clk = clk_get(NULL, "csi1_pclk");
+#else
 		clk = clk_get(&camio_dev->dev, "csi_pclk");
+#endif
 		break;
 
 	case CAMIO_JPEG_CLK:
@@ -552,25 +572,6 @@ int msm_camio_vpe_clk_enable(uint32_t clk_rate)
 	return rc;
 }
 
-#ifdef DBG_CSI
-static int csi_request_irq(void)
-{
-	return request_irq(camio_ext.csiirq, msm_io_csi_irq,
-		IRQF_TRIGGER_HIGH, "csi", 0);
-}
-#else
-static int csi_request_irq(void) { return 0; }
-#endif
-
-#ifdef DBG_CSI
-static void csi_free_irq(void)
-{
-	free_irq(camio_ext.csiirq, 0);
-}
-#else
-static void csi_free_irq(void) { return 0; }
-#endif
-
 int msm_camio_enable(struct platform_device *pdev)
 {
 	int rc = 0;
@@ -603,10 +604,15 @@ int msm_camio_enable(struct platform_device *pdev)
 		rc = -ENOMEM;
 		goto csi_busy;
 	}
-	rc = csi_request_irq();
+	rc = request_irq(camio_ext.csiirq, msm_io_csi_irq,
+		IRQF_TRIGGER_RISING, "csi", 0);
 	if (rc < 0)
 		goto csi_irq_fail;
 
+#if defined(CONFIG_SEMC_CAMERA_MODULE) || \
+	defined(CONFIG_SEMC_SUB_CAMERA_MODULE)
+	msleep(1);
+#endif
 	return 0;
 
 csi_irq_fail:
@@ -614,7 +620,10 @@ csi_irq_fail:
 csi_busy:
 	release_mem_region(camio_ext.csiphy, camio_ext.csisz);
 common_fail:
+#if !defined(CONFIG_SEMC_CAMERA_MODULE) && \
+	!defined(CONFIG_SEMC_SUB_CAMERA_MODULE)
 	msm_camio_clk_disable(CAMIO_CAM_MCLK_CLK);
+#endif
 	msm_camio_clk_disable(CAMIO_CSI0_VFE_CLK);
 	msm_camio_clk_disable(CAMIO_CSI0_CLK);
 	msm_camio_clk_disable(CAMIO_CSI1_VFE_CLK);
@@ -630,6 +639,12 @@ common_fail:
 static void msm_camio_csi_disable(void)
 {
 	uint32_t val;
+
+#ifdef CONFIG_SEMC_SUB_CAMERA_MODULE
+	/* SW_RST to the CSI core */
+	msm_io_w(MIPI_PROTOCOL_CONTROL_SW_RST_BMSK,
+		csibase + MIPI_PROTOCOL_CONTROL);
+#endif
 
 	val = 0x0;
 	CDBG("%s MIPI_PHY_D0_CONTROL2 val=0x%x\n", __func__, val);
@@ -648,9 +663,7 @@ static void msm_camio_csi_disable(void)
 	CDBG("%s MIPI_PHY_D1_CONTROL val=0x%x\n", __func__, val);
 	msm_io_w(val, csibase + MIPI_PHY_D1_CONTROL);
 	usleep_range(5000, 6000);
-	msm_io_w(0x0, csibase + MIPI_INTERRUPT_MASK);
-	msm_io_w(0x0, csibase + MIPI_INTERRUPT_STATUS);
-	csi_free_irq();
+	free_irq(camio_ext.csiirq, 0);
 	iounmap(csibase);
 	release_mem_region(camio_ext.csiphy, camio_ext.csisz);
 }
@@ -680,11 +693,19 @@ int msm_camio_sensor_clk_on(struct platform_device *pdev)
 	camio_clk = camdev->ioclk;
 
 	msm_camera_vreg_enable();
+#if !defined(CONFIG_SEMC_CAMERA_MODULE) && \
+	!defined(CONFIG_SEMC_SUB_CAMERA_MODULE)
 	msleep(10);
+#endif
 	rc = camdev->camera_gpio_on();
 	if (rc < 0)
 		return rc;
+#if !defined(CONFIG_SEMC_CAMERA_MODULE) && \
+	!defined(CONFIG_SEMC_SUB_CAMERA_MODULE)
 	return msm_camio_clk_enable(CAMIO_CAM_MCLK_CLK);
+#else
+	return rc;
+#endif
 }
 
 int msm_camio_sensor_clk_off(struct platform_device *pdev)
@@ -693,7 +714,12 @@ int msm_camio_sensor_clk_off(struct platform_device *pdev)
 	struct msm_camera_device_platform_data *camdev = sinfo->pdata;
 	msm_camera_vreg_disable();
 	camdev->camera_gpio_off();
+#if !defined(CONFIG_SEMC_CAMERA_MODULE) && \
+	!defined(CONFIG_SEMC_SUB_CAMERA_MODULE)
 	return msm_camio_clk_disable(CAMIO_CAM_MCLK_CLK);
+#else
+	return 0;
+#endif
 
 }
 
@@ -715,7 +741,12 @@ int msm_camio_probe_on(struct platform_device *pdev)
 	if (rc < 0)
 		return rc;
 	msm_camera_vreg_enable();
+#if !defined(CONFIG_SEMC_CAMERA_MODULE) && \
+	!defined(CONFIG_SEMC_SUB_CAMERA_MODULE)
 	return msm_camio_clk_enable(CAMIO_CAM_MCLK_CLK);
+#else
+	return rc;
+#endif
 }
 
 int msm_camio_probe_off(struct platform_device *pdev)
@@ -724,7 +755,12 @@ int msm_camio_probe_off(struct platform_device *pdev)
 	struct msm_camera_device_platform_data *camdev = sinfo->pdata;
 	msm_camera_vreg_disable();
 	camdev->camera_gpio_off();
+#if !defined(CONFIG_SEMC_CAMERA_MODULE) && \
+	!defined(CONFIG_SEMC_SUB_CAMERA_MODULE)
 	return msm_camio_clk_disable(CAMIO_CAM_MCLK_CLK);
+#else
+	return 0;
+#endif
 }
 
 int msm_camio_csi_config(struct msm_camera_csi_params *csi_params)
@@ -802,9 +838,9 @@ int msm_camio_csi_config(struct msm_camera_csi_params *csi_params)
 
 	/* mask out ID_ERROR[19], DATA_CMM_ERR[11]
 	and CLK_CMM_ERR[10] - de-featured */
-	msm_io_w(0xF017F3C0, csibase + MIPI_INTERRUPT_MASK);
+	msm_io_w(0xFFF7F3FF, csibase + MIPI_INTERRUPT_MASK);
 	/*clear IRQ bits*/
-	msm_io_w(0xF017F3C0, csibase + MIPI_INTERRUPT_STATUS);
+	msm_io_w(0xFFF7F3FF, csibase + MIPI_INTERRUPT_STATUS);
 
 	return rc;
 }

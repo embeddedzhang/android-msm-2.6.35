@@ -209,6 +209,35 @@ int pm8901_preload_dVdd(void)
 }
 EXPORT_SYMBOL(pm8901_preload_dVdd);
 
+int pm8901_postload_dVdd(void)
+{
+	int rc;
+	u8 reg;
+
+	if (pmic_chip == NULL) {
+		pr_err("%s: Error: PMIC 8901 driver has not probed\n",
+			__func__);
+		return -ENODEV;
+	}
+
+	reg = 0x1F;
+	rc = ssbi_write(pmic_chip->dev, 0x0BD, &reg, 1);
+	if (rc)
+		pr_err("%s: ssbi_write failed for 0x0BD, rc=%d\n", __func__,
+			rc);
+
+	reg = 0xB0;
+	rc = ssbi_write(pmic_chip->dev, 0x001, &reg, 1);
+	if (rc)
+		pr_err("%s: ssbi_write failed for 0x001, rc=%d\n", __func__,
+			rc);
+
+	pr_info("%s: dVdd postloaded\n", __func__);
+
+	return rc;
+}
+EXPORT_SYMBOL(pm8901_postload_dVdd);
+
 int pm8901_irq_get_rt_status(struct pm8901_chip *chip, int irq)
 {
 	int     rc;
@@ -881,6 +910,9 @@ static int pm8901_probe(struct i2c_client *client,
 	rc = pmic8901_dbg_probe(chip);
 	if (rc < 0)
 		pr_err("%s: could not set up debugfs: %d\n", __func__, rc);
+
+	if (pdata->pm_dVdd_unstable)
+		pm8901_preload_dVdd();
 
 	return rc;
 }

@@ -57,6 +57,7 @@ struct pm8901_platform_data {
 	int		num_subdevs;
 	struct mfd_cell *sub_devices;
 	int		irq_trigger_flags;
+	int		pm_dVdd_unstable;
 };
 
 struct pm8901_gpio_platform_data {
@@ -81,5 +82,7 @@ int pm8901_irq_get_rt_status(struct pm8901_chip *pm_chip, int irq);
 int pm8901_reset_pwr_off(int reset);
 
 int pm8901_preload_dVdd(void);
+
+int pm8901_postload_dVdd(void);
 
 #endif /* __PMIC8901_H__ */

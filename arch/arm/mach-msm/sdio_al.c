@@ -20,7 +20,7 @@
  *
  * To be used with Qualcomm's SDIO-Client connected to this host.
  */
-#include <sdio_al_private.h>
+#include "sdio_al_private.h"
 
 #include <linux/module.h>
 #include <linux/scatterlist.h>
@@ -1228,7 +1228,7 @@ static int read_mailbox(struct sdio_al_device *sdio_al_dev, int from_isr)
 		   We need to keep reading mailbox to wait for the appropriate
 		   write avail and cannot sleep. Ignore SMEM channel that has
 		   only one direction. */
-		if (strncmp(ch->name, "SDIO_SMEM", CHANNEL_NAME_SIZE))
+		if (strcmp(ch->name, "SDIO_SMEM"))
 			any_write_pending |=
 			(new_write_avail < ch->ch_config.max_tx_threshold);
 	}
@@ -2691,8 +2691,7 @@ static struct sdio_channel *find_channel_by_name(const char *name)
 			if (sdio_al_dev->channel[i].state ==
 					SDIO_CHANNEL_STATE_INVALID)
 				continue;
-			if (strncmp(sdio_al_dev->channel[i].name, name,
-					CHANNEL_NAME_SIZE) == 0) {
+			if (strcmp(sdio_al_dev->channel[i].name, name) == 0) {
 				ch = &sdio_al_dev->channel[i];
 				break;
 			}
