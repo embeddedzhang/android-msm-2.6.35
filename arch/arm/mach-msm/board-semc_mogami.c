@@ -108,7 +108,7 @@
 #ifdef CONFIG_INPUT_APDS9702
 #include <linux/apds9702.h>
 #endif
-#include <linux/i2c/akm8975.h>
+#include <linux/akm8975.h>
 #ifdef CONFIG_TOUCHSCREEN_CYTTSP_CORE
 #include <linux/cyttsp.h>
 #endif
